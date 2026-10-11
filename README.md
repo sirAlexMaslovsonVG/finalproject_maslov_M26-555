@@ -263,7 +263,7 @@ uv run python -m valutatrade_hub.parser_service.scheduler --interval 600
 uv run ruff check .        # стиль (если настроен ruff)
 ```
 
-### Полезно знать
+### Дополнительная информация
 
 - `data/*.json` и `logs/` исключены из git: это состояние запуска, а не код.
   После клона `data/` будет пустой — пользователи и портфели создаются заново.
@@ -271,3 +271,7 @@ uv run ruff check .        # стиль (если настроен ruff)
   и ExchangeRate-API.
 - Кеш считается свежим, пока не истёк TTL; при обращении Core к Parser Service
   курсы обновляются автоматически.
+
+## Демонстрация
+
+[![asciicast](https://asciinema.org/a/oVxjByQhJdft6tr8.svg)](https://asciinema.org/a/oVxjByQhJdft6tr8)
