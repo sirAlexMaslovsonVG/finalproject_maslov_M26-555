@@ -141,10 +141,50 @@ def _handle_logout(args: dict) -> None:
     print("Вы вышли из системы")
 
 
+def _handle_buy(args: dict) -> None:
+    """Команда buy --currency <str> --amount <float>."""
+    if "currency" not in args:
+        raise ValueError("Не указан обязательный аргумент '--currency'")
+    if "amount" not in args:
+        raise ValueError("Не указан обязательный аргумент '--amount'")
+
+    result = usecases.buy(args["currency"], args["amount"])
+    code = result["currency"]
+
+    print(
+        f"Покупка выполнена: {result['amount']:.4f} {code} "
+        f"по курсу {result['rate']:,.2f} USD/{code}"
+    )
+    print("Изменения в портфеле:")
+    print(f"- {code}: было {result['before']:.4f} → стало {result['after']:.4f}")
+    print(f"Оценочная стоимость покупки: {result['cost']:,.2f} USD")
+
+
+def _handle_sell(args: dict) -> None:
+    """Команда sell --currency <str> --amount <float>."""
+    if "currency" not in args:
+        raise ValueError("Не указан обязательный аргумент '--currency'")
+    if "amount" not in args:
+        raise ValueError("Не указан обязательный аргумент '--amount'")
+
+    result = usecases.sell(args["currency"], args["amount"])
+    code = result["currency"]
+
+    print(
+        f"Продажа выполнена: {result['amount']:.4f} {code} "
+        f"по курсу {result['rate']:,.2f} USD/{code}"
+    )
+    print("Изменения в портфеле:")
+    print(f"- {code}: было {result['before']:.4f} → стало {result['after']:.4f}")
+    print(f"Оценочная выручка: {result['revenue']:,.2f} USD")
+
+
 # Таблица команд: имя -> обработчик
 COMMANDS = {
     "register": _handle_register,
     "login": _handle_login,
-    "show-portfolio": _handle_show_portfolio,
     "logout": _handle_logout,
+    "show-portfolio": _handle_show_portfolio,
+    "buy": _handle_buy,
+    "sell": _handle_sell,
 }

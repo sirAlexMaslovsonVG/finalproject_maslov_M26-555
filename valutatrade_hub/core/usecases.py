@@ -241,3 +241,115 @@ def _rate_to_base(currency: str, base: str, rates: dict) -> float:
         return rates[to_usd]["rate"] / rates[base_usd]["rate"]
 
     raise ValueError(f"Курс для {currency}→{base} недоступен")
+
+
+# --- Команды buy / sell ---
+
+
+def _load_portfolio() -> tuple[Portfolio, list]:
+    """Загружает портфель текущего пользователя вместе со списком записей."""
+    user = _require_login()
+    portfolios = utils.load_portfolios()
+    record = _find_portfolio_record(portfolios, user.user_id)
+    return _portfolio_from_record(record, user), portfolios
+
+
+def buy(currency: str, amount) -> dict:
+    """Покупает валюту: увеличивает баланс кошелька на amount.
+
+    Args:
+        currency: код покупаемой валюты.
+        amount: количество в штуках (не в долларах), > 0.
+
+    Returns:
+        Данные об операции для вывода в CLI.
+    """
+    code = utils.validate_currency_code(currency)
+    value = utils.validate_amount(amount)
+
+    portfolio, portfolios = _load_portfolio()
+
+    if code not in portfolio.wallets:
+        portfolio.add_currency(code)
+
+    wallet = portfolio.get_wallet(code)
+    before = wallet.balance
+    wallet.deposit(value)
+    after = wallet.balance
+
+    _save_portfolio(portfolio, portfolios)
+
+    rates = utils.refresh_rates()
+    try:
+        rate = _rate_to_base(code, "USD", rates)
+    except ValueError as error:
+        raise ValueError(f"Не удалось получить курс для {code}→USD") from error
+
+    return {
+        "currency": code,
+        "amount": value,
+        "before": before,
+        "after": after,
+        "rate": rate,
+        "cost": value * rate,
+    }
+
+
+def sell(currency: str, amount) -> dict:
+    """Продаёт валюту: уменьшает баланс кошелька на amount.
+
+    Args:
+        currency: код продаваемой валюты.
+        amount: количество в штуках, > 0.
+
+    Returns:
+        Данные об операции для вывода в CLI.
+    """
+    code = utils.validate_currency_code(currency)
+    value = utils.validate_amount(amount)
+
+    portfolio, portfolios = _load_portfolio()
+
+    if code not in portfolio.wallets:
+        raise ValueError(
+            f"У вас нет кошелька '{code}'. Добавьте валюту: "
+            "она создаётся автоматически при первой покупке."
+        )
+
+    wallet = portfolio.get_wallet(code)
+    before = wallet.balance
+
+    if value > before:
+        raise ValueError(
+            f"Недостаточно средств: доступно {before:.4f} {code}, "
+            f"требуется {value:.4f} {code}"
+        )
+
+    wallet.withdraw(value)
+    after = wallet.balance
+
+    _save_portfolio(portfolio, portfolios)
+
+    rates = utils.refresh_rates()
+    try:
+        rate = _rate_to_base(code, "USD", rates)
+    except ValueError as error:
+        raise ValueError(f"Не удалось получить курс для {code}→USD") from error
+
+    return {
+        "currency": code,
+        "amount": value,
+        "before": before,
+        "after": after,
+        "rate": rate,
+        "revenue": value * rate,
+    }
+
+
+def _save_portfolio(portfolio: Portfolio, portfolios: list) -> None:
+    """Записывает изменённый портфель обратно в portfolios.json."""
+    for index, record in enumerate(portfolios):
+        if record["user_id"] == portfolio.user_id:
+            portfolios[index] = _record_from_portfolio(portfolio)
+            break
+    utils.save_portfolios(portfolios)
