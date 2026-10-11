@@ -1,8 +1,4 @@
-"""Иерархия валют и реестр кодов.
-
-Раздел 3.1 ТЗ: абстрактный базовый класс Currency, наследники
-FiatCurrency / CryptoCurrency, фабрика get_currency().
-"""
+"""Иерархия валют и реестр кодов."""
 
 from abc import ABC, abstractmethod
 
@@ -10,21 +6,21 @@ from valutatrade_hub.core.exceptions import CurrencyNotFoundError
 
 
 class Currency(ABC):
-    """Абстрактная валюта с базовым поведением."""
+    """Абстрактная валюта с базовыми атрибутами и поведением."""
 
     def __init__(self, name: str, code: str) -> None:
-        """Создаёт валюту с валидацией инвариантов.
+        """Создаёт валюту с проверкой инвариантов.
 
         Args:
             name: человекочитаемое имя, не пустое.
-            code: код валюты, верхний регистр, 2–5 символов, без пробелов.
+            code: код валюты; верхний регистр, 2–5 символов, без пробелов.
         """
         if not isinstance(name, str) or not name.strip():
             raise ValueError("Название валюты не может быть пустым")
         if not isinstance(code, str):
             raise ValueError(f"Некорректный код валюты: {code!r}")
         code = code.strip()
-        if not code.isupper() or not (2 <= len(code) <= 5) or " " in code:
+        if not code.isupper() or not 2 <= len(code) <= 5 or " " in code:
             raise ValueError(
                 f"Некорректный код валюты '{code}': ожидается 2–5 символов "
                 "в верхнем регистре без пробелов"
@@ -35,7 +31,7 @@ class Currency(ABC):
 
     @abstractmethod
     def get_display_info(self) -> str:
-        """Строковое представление валюты для UI и логов."""
+        """Возвращает строковое представление валюты для UI и логов."""
 
     def __repr__(self) -> str:
         """Техническое представление для отладки."""
@@ -43,7 +39,7 @@ class Currency(ABC):
 
 
 class FiatCurrency(Currency):
-    """Фиатная валюта с указанием страны/зоны эмиссии."""
+    """Фиатная валюта с указанием страны или зоны эмиссии."""
 
     def __init__(self, name: str, code: str, issuing_country: str) -> None:
         """Создаёт фиатную валюту.
@@ -55,7 +51,7 @@ class FiatCurrency(Currency):
         """
         super().__init__(name, code)
         if not isinstance(issuing_country, str) or not issuing_country.strip():
-            raise ValueError("Страна/зона эмиссии не может быть пустой")
+            raise ValueError("Страна или зона эмиссии не может быть пустой")
         self.issuing_country = issuing_country.strip()
 
     def get_display_info(self) -> str:
@@ -78,7 +74,7 @@ class CryptoCurrency(Currency):
         Args:
             name: имя валюты.
             code: код валюты.
-            algorithm: алгоритм (например, «SHA-256»).
+            algorithm: алгоритм консенсуса (например, «SHA-256»).
             market_cap: последняя известная капитализация.
         """
         super().__init__(name, code)
@@ -100,11 +96,10 @@ class CryptoCurrency(Currency):
         )
 
 
-# --- Реестр валют ---
+# --- Реестр валют (раздел 3.1 ТЗ) ---
 
 _CURRENCIES: dict[str, Currency] = {
     "USD": FiatCurrency("US Dollar", "USD", "United States"),
-    "EUR": FiatCurrency("Euro", "EUR", "Eurozone"),
     "EUR": FiatCurrency("Euro", "EUR", "Eurozone"),
     "RUB": FiatCurrency("Russian Ruble", "RUB", "Russian Federation"),
     "BTC": CryptoCurrency("Bitcoin", "BTC", "SHA-256", 1.12e12),
@@ -113,16 +108,16 @@ _CURRENCIES: dict[str, Currency] = {
 
 
 def get_currency(code: str) -> Currency:
-    """Возвращает валюту по коду.
+    """Возвращает валюту из реестра по коду.
 
     Args:
-        code: код валюты (регистр не важен, но приводится к верхнему).
+        code: код валюты; регистр не важен, приводится к верхнему.
 
     Returns:
-        Экземпляр Currency из реестра.
+        Экземпляр Currency.
 
     Raises:
-        CurrencyNotFoundError: если код неизвестен.
+        CurrencyNotFoundError: если код неизвестен или некорректен.
     """
     if not isinstance(code, str) or not code.strip():
         raise CurrencyNotFoundError(str(code))
@@ -134,5 +129,10 @@ def get_currency(code: str) -> Currency:
 
 
 def list_currencies() -> list[str]:
-    """Возвращает список поддерживаемых кодов валют."""
+    """Возвращает отсортированный список поддерживаемых кодов валют."""
     return sorted(_CURRENCIES)
+
+
+def is_fiat(code: str) -> bool:
+    """Проверяет, является ли валюта фиатной (для форматирования вывода)."""
+    return isinstance(get_currency(code), FiatCurrency)

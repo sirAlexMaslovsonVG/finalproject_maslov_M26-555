@@ -1,117 +1,159 @@
 """Вспомогательные функции ValutaTrade Hub."""
 
 import json
+import os
 from datetime import datetime, timedelta
-from pathlib import Path
 
-# --- Пути к файлам данных ---
-# utils.py лежит в valutatrade_hub/core/, значит корень проекта — parents[2]
+# --- Константы конфигурации (до раздела 3.3 будут жить здесь) ---
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = "data"
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
+PORTFOLIOS_FILE = os.path.join(DATA_DIR, "portfolios.json")
+RATES_FILE = os.path.join(DATA_DIR, "rates.json")
 
-USERS_FILE = DATA_DIR / "users.json"
-PORTFOLIOS_FILE = DATA_DIR / "portfolios.json"
-RATES_FILE = DATA_DIR / "rates.json"
+RATES_TTL_SECONDS = 300  # 5 минут, как в ТЗ (раздел 2.2)
 
-# Формат ключа: "FROM_TO" — сколько единиц TO дают за 1 единицу FROM
-STUB_EXCHANGE_RATES = {
-    "USD_USD": 1.0,
+# Стартовый баланс USD при регистрации (виртуальный стартовый капитал).
+# Нужен, чтобы логика ТЗ «покупка списывается с USD-кошелька» работала.
+STARTING_USD_BALANCE = 10_000.0
+
+# Заглушка курсов до подключения Parser Service (раздел 5 ТЗ).
+STUB_RATES = {
     "EUR_USD": 1.0786,
-    "RUB_USD": 0.01016,
     "BTC_USD": 59337.21,
+    "RUB_USD": 0.01016,
     "ETH_USD": 3720.00,
 }
+STUB_RATES_SOURCE = "StubRates (ParserService заглушка)"
 
-# Время жизни курса в кеше (ТЗ: «моложе 5 минут»)
-RATES_TTL_SECONDS = 300
-
-# --- Работа с файлами ---
+# --- Работа с путями и JSON ---
 
 
-def ensure_data_files() -> None:
-    """Создаёт папку data/ и пустые файлы, если их ещё нет."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not USERS_FILE.exists():
-        USERS_FILE.write_text("[]", encoding="utf-8")
-    if not PORTFOLIOS_FILE.exists():
-        PORTFOLIOS_FILE.write_text("[]", encoding="utf-8")
-    if not RATES_FILE.exists():
-        RATES_FILE.write_text("{}", encoding="utf-8")
+def _ensure_data_dir() -> None:
+    """Создаёт каталог data/, если его нет."""
+    os.makedirs(DATA_DIR, exist_ok=True)
 
 
-def read_json(path: Path, default):
-    """Читает JSON из файла; возвращает default, если файла нет или он пуст."""
-    ensure_data_files()
+def _load_json(path: str, default):
+    """Загружает JSON из файла или возвращает значение по умолчанию."""
+    _ensure_data_dir()
+    if not os.path.exists(path):
+        return default
     try:
-        with path.open("r", encoding="utf-8") as file:
-            content = file.read().strip()
-            if not content:
-                return default
-            return json.loads(content)
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
     except (json.JSONDecodeError, OSError):
         return default
 
 
-def write_json(path: Path, data) -> None:
-    """Записывает данные в JSON-файл."""
-    ensure_data_files()
-    with path.open("w", encoding="utf-8") as file:
+def _save_json(path: str, data) -> None:
+    """Атомарно сохраняет данные в JSON-файл (tmp → rename)."""
+    _ensure_data_dir()
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)
 
 
 def load_users() -> list:
-    """Возвращает список пользователей из users.json."""
-    return read_json(USERS_FILE, default=[])
+    """Загружает список пользователей из users.json."""
+    return _load_json(USERS_FILE, [])
 
 
 def save_users(users: list) -> None:
     """Сохраняет список пользователей в users.json."""
-    write_json(USERS_FILE, users)
+    _save_json(USERS_FILE, users)
 
 
 def load_portfolios() -> list:
-    """Возвращает список портфелей из portfolios.json."""
-    return read_json(PORTFOLIOS_FILE, default=[])
+    """Загружает список портфелей из portfolios.json."""
+    return _load_json(PORTFOLIOS_FILE, [])
 
 
 def save_portfolios(portfolios: list) -> None:
     """Сохраняет список портфелей в portfolios.json."""
-    write_json(PORTFOLIOS_FILE, portfolios)
+    _save_json(PORTFOLIOS_FILE, portfolios)
 
 
 def load_rates() -> dict:
-    """Возвращает кеш курсов из rates.json."""
-    return read_json(RATES_FILE, default={})
+    """Загружает кеш курсов из rates.json."""
+    return _load_json(RATES_FILE, {})
 
 
 def save_rates(rates: dict) -> None:
     """Сохраняет кеш курсов в rates.json."""
-    write_json(RATES_FILE, rates)
+    _save_json(RATES_FILE, rates)
 
 
 # --- Время ---
 
 
 def now_iso() -> str:
-    """Текущее время в формате ISO (без микросекунд)."""
+    """Возвращает текущее время в формате ISO без микросекунд."""
     return datetime.now().replace(microsecond=0).isoformat()
 
 
 def is_fresh(updated_at: str, ttl_seconds: int = RATES_TTL_SECONDS) -> bool:
-    """Проверяет, что метка времени моложе ttl_seconds (ТЗ: 5 минут)."""
+    """Проверяет, моложе ли метка времени указанного TTL.
+
+    Args:
+        updated_at: метка времени в формате ISO.
+        ttl_seconds: время жизни в секундах.
+
+    Returns:
+        True, если метка свежая; иначе False.
+    """
+    if not updated_at:
+        return False
     try:
         moment = datetime.fromisoformat(updated_at)
-    except (TypeError, ValueError):
+    except ValueError:
         return False
     return datetime.now() - moment < timedelta(seconds=ttl_seconds)
 
 
-# --- Валидаторы (ТЗ, шаг 0) ---
+# --- Курсы (заглушка Parser Service) ---
+
+
+def refresh_rates() -> dict:
+    """Возвращает актуальные курсы: из кеша, если свежий, иначе обновляет.
+
+    Пока Parser Service не подключён, источник — заглушка STUB_RATES.
+
+    Returns:
+        Словарь курсов в формате rates.json.
+    """
+    rates = load_rates()
+    last_refresh = rates.get("last_refresh")
+    if last_refresh and is_fresh(last_refresh):
+        return rates
+
+    updated_at = now_iso()
+    refreshed = {
+        pair: {"rate": rate, "updated_at": updated_at}
+        for pair, rate in STUB_RATES.items()
+    }
+    refreshed["source"] = STUB_RATES_SOURCE
+    refreshed["last_refresh"] = updated_at
+    save_rates(refreshed)
+    return refreshed
+
+
+# --- Валидаторы (раздел 2.2 ТЗ) ---
 
 
 def validate_amount(amount) -> float:
-    """amount — положительное число (float > 0)."""
+    """Проверяет, что сумма — положительное число.
+
+    Args:
+        amount: значение для проверки (может быть строкой).
+
+    Returns:
+        Сумма как float.
+
+    Raises:
+        ValueError: если сумма не число или не больше нуля.
+    """
     try:
         value = float(amount)
     except (TypeError, ValueError) as error:
@@ -121,29 +163,40 @@ def validate_amount(amount) -> float:
     return value
 
 
-def validate_currency_code(code) -> str:
-    """currency_code — непустая строка, приводится к верхнему регистру."""
+def validate_currency_code(code: str) -> str:
+    """Проверяет, что код валюты — непустая строка; приводит к верхнему регистру.
+
+    Args:
+        code: код валюты.
+
+    Returns:
+        Код в верхнем регистре.
+
+    Raises:
+        ValueError: если код не строка или пустой.
+    """
     if not isinstance(code, str) or not code.strip():
         raise ValueError("Код валюты не может быть пустым")
     return code.strip().upper()
 
 
-# --- Сервис курсов (заглушка) ---
+# --- Форматирование вывода (формат ТЗ) ---
 
 
-def refresh_rates() -> dict:
-    """Обновляет кеш курсов заглушкой, если он устарел. Возвращает кеш."""
-    rates = load_rates()
-    last_refresh = rates.get("last_refresh")
+def format_amount(amount: float, currency_code: str) -> str:
+    """Форматирует сумму по правилам ТЗ.
 
-    if last_refresh and is_fresh(last_refresh):
-        return rates
+    Фиатные валюты — 2 знака после запятой, криптовалюты — 4.
 
-    refreshed = {}
-    for key, rate in STUB_EXCHANGE_RATES.items():
-        refreshed[key] = {"rate": rate, "updated_at": now_iso()}
-    refreshed["source"] = "StubRates (ParserService заглушка)"
-    refreshed["last_refresh"] = now_iso()
+    Args:
+        amount: значение для вывода.
+        currency_code: код валюты.
 
-    save_rates(refreshed)
-    return refreshed
+    Returns:
+        Строка с числом, отформатированным для UI.
+    """
+    # локальный импорт во избежание циклической зависимости utils ↔ currencies
+    from valutatrade_hub.core.currencies import is_fiat
+
+    digits = 2 if is_fiat(currency_code) else 4
+    return f"{amount:.{digits}f}"

@@ -1,24 +1,20 @@
 {
-  "USD_USD": {
-    "rate": 1.0,
-    "updated_at": "2026-10-11T10:36:25"
-  },
   "EUR_USD": {
     "rate": 1.0786,
-    "updated_at": "2026-10-11T10:36:25"
-  },
-  "RUB_USD": {
-    "rate": 0.01016,
-    "updated_at": "2026-10-11T10:36:25"
+    "updated_at": "2026-10-11T12:33:10"
   },
   "BTC_USD": {
     "rate": 59337.21,
-    "updated_at": "2026-10-11T10:36:25"
+    "updated_at": "2026-10-11T12:33:10"
+  },
+  "RUB_USD": {
+    "rate": 0.01016,
+    "updated_at": "2026-10-11T12:33:10"
   },
   "ETH_USD": {
     "rate": 3720.0,
-    "updated_at": "2026-10-11T10:36:25"
+    "updated_at": "2026-10-11T12:33:10"
   },
   "source": "StubRates (ParserService заглушка)",
-  "last_refresh": "2026-10-11T10:36:25"
+  "last_refresh": "2026-10-11T12:33:10"
 }

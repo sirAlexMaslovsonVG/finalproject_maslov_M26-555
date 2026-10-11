@@ -3,21 +3,25 @@
 import shlex
 
 from valutatrade_hub.core import usecases
+from valutatrade_hub.core.currencies import list_currencies
+from valutatrade_hub.core.exceptions import (
+    ApiRequestError,
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
+from valutatrade_hub.core.utils import format_amount
 
-# Справка по доступным командам (раздел 2.2 ТЗ)
 HELP_TEXT = """Доступные команды:
   register --username <str> --password <str>
   login --username <str> --password <str>
+  logout
   show-portfolio [--base <str>]
   buy --currency <str> --amount <float>
   sell --currency <str> --amount <float>
   get-rate --from <str> --to <str>
   help
-  logout
   exit
 """
-
-# --- Разбор аргументов вида --key value ---
 
 
 def _parse_args(tokens: list) -> dict:
@@ -36,30 +40,130 @@ def _parse_args(tokens: list) -> dict:
     return args
 
 
+def _require_arg(args: dict, name: str) -> str:
+    """Возвращает значение обязательного аргумента или бросает ошибку."""
+    if name not in args:
+        raise ValueError(f"Не указан обязательный аргумент '--{name}'")
+    return args[name]
+
+
 # --- Обработчики команд ---
 
 
 def _handle_register(args: dict) -> None:
     """Команда register --username <str> --password <str>."""
-    if "username" not in args:
-        raise ValueError("Не указан обязательный аргумент '--username'")
-    if "password" not in args:
-        raise ValueError("Не указан обязательный аргумент '--password'")
-    message = usecases.register(args["username"], args["password"])
+    message = usecases.register(
+        _require_arg(args, "username"), _require_arg(args, "password")
+    )
     print(message)
 
 
 def _handle_login(args: dict) -> None:
     """Команда login --username <str> --password <str>."""
-    if "username" not in args:
-        raise ValueError("Не указан обязательный аргумент '--username'")
-    if "password" not in args:
-        raise ValueError("Не указан обязательный аргумент '--password'")
-    message = usecases.login(args["username"], args["password"])
+    message = usecases.login(
+        _require_arg(args, "username"), _require_arg(args, "password")
+    )
     print(message)
 
 
-# --- Основной разбор и запуск ---
+def _handle_logout(args: dict) -> None:
+    """Команда logout."""
+    usecases.logout()
+    print("Вы вышли из системы")
+
+
+def _handle_show_portfolio(args: dict) -> None:
+    """Команда show-portfolio [--base <str>]."""
+    base = args.get("base", "USD")
+    result = usecases.show_portfolio(base)
+
+    print(f"Портфель пользователя '{result['user']}' (база: {result['base']}):")
+    if not result["wallets"]:
+        print("  Кошельки отсутствуют.")
+        print(f"ИТОГО: 0.00 {result['base']}")
+        return
+
+    for item in result["wallets"]:
+        code = item["currency"]
+        balance = format_amount(item["balance"], code)
+        value = format_amount(item["value"], result["base"])
+        print(f"- {code}: {balance}  → {value} {result['base']}")
+
+    print("-" * 33)
+    total = format_amount(result["total"], result["base"])
+    print(f"ИТОГО: {total} {result['base']}")
+
+
+def _handle_buy(args: dict) -> None:
+    """Команда buy --currency <str> --amount <float>."""
+    result = usecases.buy(_require_arg(args, "currency"), _require_arg(args, "amount"))
+    code = result["currency"]
+
+    rate = format_amount(result["rate"], "USD") if False else f"{result['rate']:,.2f}"
+    print(
+        f"Покупка выполнена: {result['amount']:.4f} {code} по курсу {rate} USD/{code}"
+    )
+    print("Изменения в портфеле:")
+    print(f"- {code}: было {result['before']:.4f} → стало {result['after']:.4f}")
+    print(f"Оценочная стоимость покупки: {result['cost']:,.2f} USD")
+
+
+def _handle_sell(args: dict) -> None:
+    """Команда sell --currency <str> --amount <float>."""
+    result = usecases.sell(_require_arg(args, "currency"), _require_arg(args, "amount"))
+    code = result["currency"]
+
+    rate = f"{result['rate']:,.2f}"
+    print(
+        f"Продажа выполнена: {result['amount']:.4f} {code} по курсу {rate} USD/{code}"
+    )
+    print("Изменения в портфеле:")
+    print(f"- {code}: было {result['before']:.4f} → стало {result['after']:.4f}")
+    print(f"Оценочная выручка: {result['revenue']:,.2f} USD")
+
+
+def _format_rate(value: float) -> str:
+    """Форматирует значение курса для вывода.
+
+    Очень маленькие значения выводятся с 8 знаками, крупные — с 2,
+    чтобы совпасть с примерами и не терять точность для крипты.
+
+    Args:
+        value: значение курса.
+
+    Returns:
+        Отформатированная строка.
+    """
+    if value and abs(value) < 1:
+        return f"{value:.8f}"
+    return f"{value:,.2f}"
+
+
+def _handle_get_rate(args: dict) -> None:
+    """Команда get-rate --from <str> --to <str>."""
+    result = usecases.get_rate(_require_arg(args, "from"), _require_arg(args, "to"))
+
+    updated = result["updated_at"].replace("T", " ")
+    print(
+        f"Курс {result['from']}→{result['to']}: {_format_rate(result['rate'])} "
+        f"(обновлено: {updated})"
+    )
+    if result["rate"]:
+        print(
+            f"Обратный курс {result['to']}→{result['from']}: "
+            f"{_format_rate(1 / result['rate'])}"
+        )
+
+
+COMMANDS = {
+    "register": _handle_register,
+    "login": _handle_login,
+    "logout": _handle_logout,
+    "show-portfolio": _handle_show_portfolio,
+    "buy": _handle_buy,
+    "sell": _handle_sell,
+    "get-rate": _handle_get_rate,
+}
 
 
 def execute_line(line: str) -> str | None:
@@ -95,6 +199,15 @@ def execute_line(line: str) -> str | None:
     try:
         args = _parse_args(rest)
         handler(args)
+    except InsufficientFundsError as error:
+        print(error)
+    except CurrencyNotFoundError as error:
+        print(error)
+        supported = ", ".join(list_currencies())
+        print(f"Поддерживаемые коды: {supported}. Справка: help get-rate")
+    except ApiRequestError as error:
+        print(error)
+        print("Повторите попытку позже или проверьте соединение.")
     except (ValueError, KeyError, PermissionError) as error:
         print(error)
 
@@ -113,93 +226,3 @@ def run_repl() -> None:
 
         if execute_line(line) == "exit":
             break
-
-
-def _handle_show_portfolio(args: dict) -> None:
-    """Команда show-portfolio [--base <str>]."""
-    base = args.get("base", "USD")
-    result = usecases.show_portfolio(base)
-
-    print(f"Портфель пользователя '{result['user']}' (база: {result['base']}):")
-    if not result["wallets"]:
-        print("  Кошельки отсутствуют.")
-        print(f"ИТОГО: 0.00 {result['base']}")
-        return
-
-    for item in result["wallets"]:
-        print(
-            f"- {item['currency']}: {item['balance']:.4f} "
-            f"→ {item['value']:,.2f} {result['base']}"
-        )
-    print("-" * 33)
-    print(f"ИТОГО: {result['total']:,.2f} {result['base']}")
-
-
-def _handle_logout(args: dict) -> None:
-    """Команда logout."""
-    usecases.logout()
-    print("Вы вышли из системы")
-
-
-def _handle_buy(args: dict) -> None:
-    """Команда buy --currency <str> --amount <float>."""
-    if "currency" not in args:
-        raise ValueError("Не указан обязательный аргумент '--currency'")
-    if "amount" not in args:
-        raise ValueError("Не указан обязательный аргумент '--amount'")
-
-    result = usecases.buy(args["currency"], args["amount"])
-    code = result["currency"]
-
-    print(
-        f"Покупка выполнена: {result['amount']:.4f} {code} "
-        f"по курсу {result['rate']:,.2f} USD/{code}"
-    )
-    print("Изменения в портфеле:")
-    print(f"- {code}: было {result['before']:.4f} → стало {result['after']:.4f}")
-    print(f"Оценочная стоимость покупки: {result['cost']:,.2f} USD")
-
-
-def _handle_sell(args: dict) -> None:
-    """Команда sell --currency <str> --amount <float>."""
-    if "currency" not in args:
-        raise ValueError("Не указан обязательный аргумент '--currency'")
-    if "amount" not in args:
-        raise ValueError("Не указан обязательный аргумент '--amount'")
-
-    result = usecases.sell(args["currency"], args["amount"])
-    code = result["currency"]
-
-    print(
-        f"Продажа выполнена: {result['amount']:.4f} {code} "
-        f"по курсу {result['rate']:,.2f} USD/{code}"
-    )
-    print("Изменения в портфеле:")
-    print(f"- {code}: было {result['before']:.4f} → стало {result['after']:.4f}")
-    print(f"Оценочная выручка: {result['revenue']:,.2f} USD")
-
-
-def _handle_get_rate(args: dict) -> None:
-    """Команда get-rate --from <str> --to <str>."""
-    if "from" not in args:
-        raise ValueError("Не указан обязательный аргумент '--from'")
-    if "to" not in args:
-        raise ValueError("Не указан обязательный аргумент '--to'")
-
-    result = usecases.get_rate(args["from"], args["to"])
-
-    print(f"Курс {result['pair']}: {result['rate']:,.6f}")
-    print(f"Обновлено: {result['updated_at']}")
-    print(f"Источник: {result['source']}")
-
-
-# Таблица команд: имя -> обработчик
-COMMANDS = {
-    "register": _handle_register,
-    "login": _handle_login,
-    "logout": _handle_logout,
-    "show-portfolio": _handle_show_portfolio,
-    "buy": _handle_buy,
-    "sell": _handle_sell,
-    "get-rate": _handle_get_rate,
-}
