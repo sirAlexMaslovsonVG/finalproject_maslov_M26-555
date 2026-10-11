@@ -70,6 +70,9 @@ def _handle_login(args: dict) -> None:
 
 def _handle_logout(args: dict) -> None:
     """Команда logout."""
+    if usecases.get_current_user() is None:
+        print("Вы не авторизованы")
+        return
     usecases.logout()
     print("Вы вышли из системы")
 
@@ -98,13 +101,18 @@ def _handle_show_portfolio(args: dict) -> None:
 
 def _handle_buy(args: dict) -> None:
     """Команда buy --currency <str> --amount <float>."""
-    result = usecases.buy(
-        currency=_require_arg(args, "currency"),
-        amount=_require_arg(args, "amount"),
-    )
-    code = result["currency"]
+    currency = _require_arg(args, "currency").upper()
+    amount = _require_arg(args, "amount")
 
-    rate = format_amount(result["rate"], "USD") if False else f"{result['rate']:,.2f}"
+    # 3.5: недоступный курс -> отдельное сообщение из ТЗ (раздел 2.2).
+    try:
+        result = usecases.buy(currency=currency, amount=amount)
+    except ApiRequestError:
+        print(f"Не удалось получить курс для {currency}→USD")
+        return
+
+    code = result["currency"]
+    rate = f"{result['rate']:,.2f}"
     print(
         f"Покупка выполнена: {result['amount']:.4f} {code} по курсу {rate} USD/{code}"
     )
@@ -115,12 +123,17 @@ def _handle_buy(args: dict) -> None:
 
 def _handle_sell(args: dict) -> None:
     """Команда sell --currency <str> --amount <float>."""
-    result = usecases.sell(
-        currency=_require_arg(args, "currency"),
-        amount=_require_arg(args, "amount"),
-    )
-    code = result["currency"]
+    currency = _require_arg(args, "currency").upper()
+    amount = _require_arg(args, "amount")
 
+    # 3.5: недоступный курс -> отдельное сообщение из ТЗ (раздел 2.2).
+    try:
+        result = usecases.sell(currency=currency, amount=amount)
+    except ApiRequestError:
+        print(f"Не удалось получить курс для {currency}→USD")
+        return
+
+    code = result["currency"]
     rate = f"{result['rate']:,.2f}"
     print(
         f"Продажа выполнена: {result['amount']:.4f} {code} по курсу {rate} USD/{code}"
@@ -149,10 +162,15 @@ def _format_rate(value: float) -> str:
 
 def _handle_get_rate(args: dict) -> None:
     """Команда get-rate --from <str> --to <str>."""
-    result = usecases.get_rate(
-        from_currency=_require_arg(args, "from"),
-        to_currency=_require_arg(args, "to"),
-    )
+    from_code = _require_arg(args, "from").upper()
+    to_code = _require_arg(args, "to").upper()
+
+    # 3.5: недоступный источник -> сообщение из ТЗ (раздел 2.2).
+    try:
+        result = usecases.get_rate(from_currency=from_code, to_currency=to_code)
+    except ApiRequestError:
+        print(f"Курс {from_code}→{to_code} недоступен. Повторите попытку позже.")
+        return
 
     updated = result["updated_at"].replace("T", " ")
     print(

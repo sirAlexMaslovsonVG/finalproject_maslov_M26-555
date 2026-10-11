@@ -26,5 +26,12 @@
     "hashed_password": "8de6ab05be1b88078740f493e994c89746ebc8183443ab867e5eb89745f10b35",
     "salt": "9a150e75",
     "registration_date": "2026-10-11T13:22:24"
+  },
+  {
+    "user_id": 5,
+    "username": "zoe",
+    "hashed_password": "8552511a8d89938f570e6cce98d9017e1f74912c3fe8fc29b210e2b9ab6d91ff",
+    "salt": "c772d390",
+    "registration_date": "2026-10-11T13:54:31"
   }
 ]
