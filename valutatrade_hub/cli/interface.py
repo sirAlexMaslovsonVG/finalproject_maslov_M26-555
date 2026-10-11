@@ -13,6 +13,7 @@ HELP_TEXT = """Доступные команды:
   sell --currency <str> --amount <float>
   get-rate --from <str> --to <str>
   help
+  logout
   exit
 """
 
@@ -57,12 +58,6 @@ def _handle_login(args: dict) -> None:
     message = usecases.login(args["username"], args["password"])
     print(message)
 
-
-# Таблица команд: имя -> обработчик
-COMMANDS = {
-    "register": _handle_register,
-    "login": _handle_login,
-}
 
 # --- Основной разбор и запуск ---
 
@@ -118,3 +113,38 @@ def run_repl() -> None:
 
         if execute_line(line) == "exit":
             break
+
+
+def _handle_show_portfolio(args: dict) -> None:
+    """Команда show-portfolio [--base <str>]."""
+    base = args.get("base", "USD")
+    result = usecases.show_portfolio(base)
+
+    print(f"Портфель пользователя '{result['user']}' (база: {result['base']}):")
+    if not result["wallets"]:
+        print("  Кошельки отсутствуют.")
+        print(f"ИТОГО: 0.00 {result['base']}")
+        return
+
+    for item in result["wallets"]:
+        print(
+            f"- {item['currency']}: {item['balance']:.4f} "
+            f"→ {item['value']:,.2f} {result['base']}"
+        )
+    print("-" * 33)
+    print(f"ИТОГО: {result['total']:,.2f} {result['base']}")
+
+
+def _handle_logout(args: dict) -> None:
+    """Команда logout."""
+    usecases.logout()
+    print("Вы вышли из системы")
+
+
+# Таблица команд: имя -> обработчик
+COMMANDS = {
+    "register": _handle_register,
+    "login": _handle_login,
+    "show-portfolio": _handle_show_portfolio,
+    "logout": _handle_logout,
+}

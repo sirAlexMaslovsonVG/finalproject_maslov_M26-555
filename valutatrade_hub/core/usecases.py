@@ -5,7 +5,7 @@ import secrets
 from datetime import datetime
 
 from valutatrade_hub.core import utils
-from valutatrade_hub.core.models import User
+from valutatrade_hub.core.models import Portfolio, User, Wallet
 
 # --- Текущая сессия (в памяти процесса) ---
 _current_user: User | None = None
@@ -134,3 +134,110 @@ def login(username: str, password: str) -> str:
 
     _current_user = user
     return f"Вы вошли как '{username}'"
+
+
+def logout() -> None:
+    """Завершает сессию текущего пользователя."""
+    global _current_user
+    _current_user = None
+
+
+def _require_login() -> User:
+    """Возвращает залогиненного пользователя или бросает ошибку."""
+    if _current_user is None:
+        raise PermissionError("Сначала выполните login")
+    return _current_user
+
+
+# --- Сборка/запись портфеля ---
+
+
+def _portfolio_from_record(record: dict, user: User) -> Portfolio:
+    """Преобразует запись из portfolios.json в объект Portfolio."""
+    wallets = {}
+    for code, data in record.get("wallets", {}).items():
+        wallets[code] = Wallet(currency_code=code, balance=data.get("balance", 0.0))
+    return Portfolio(user_id=record["user_id"], user=user, wallets=wallets)
+
+
+def _record_from_portfolio(portfolio: Portfolio) -> dict:
+    """Преобразует объект Portfolio в словарь для portfolios.json."""
+    return {
+        "user_id": portfolio.user_id,
+        "wallets": {
+            code: {"balance": wallet.balance}
+            for code, wallet in portfolio.wallets.items()
+        },
+    }
+
+
+def _find_portfolio_record(portfolios: list, user_id: int) -> dict:
+    """Находит запись портфеля по user_id."""
+    for record in portfolios:
+        if record["user_id"] == user_id:
+            return record
+    raise KeyError(f"Портфель пользователя id={user_id} не найден")
+
+
+# --- Команда show-portfolio ---
+
+
+def show_portfolio(base_currency: str = "USD") -> dict:
+    """Считает портфель пользователя в базовой валюте.
+
+    Args:
+        base_currency: базовая валюта конвертации (по умолчанию USD).
+
+    Returns:
+        Словарь с именем пользователя, базой, строками кошельков и итогом.
+    """
+    user = _require_login()
+    base = utils.validate_currency_code(base_currency)
+
+    rates = utils.refresh_rates()
+
+    if base != "USD" and f"{base}_USD" not in rates:
+        raise ValueError(f"Неизвестная базовая валюта '{base}'")
+
+    portfolios = utils.load_portfolios()
+    record = _find_portfolio_record(portfolios, user.user_id)
+    portfolio = _portfolio_from_record(record, user)
+
+    wallets_info = []
+    total = 0.0
+    for code, wallet in portfolio.wallets.items():
+        rate = _rate_to_base(code, base, rates)
+        value = wallet.balance * rate
+        total += value
+        wallets_info.append(
+            {"currency": code, "balance": wallet.balance, "value": value}
+        )
+
+    return {
+        "user": user.username,
+        "base": base,
+        "wallets": wallets_info,
+        "total": total,
+    }
+
+
+def _rate_to_base(currency: str, base: str, rates: dict) -> float:
+    """Возвращает курс currency → base по кешу rates.json."""
+    if currency == base:
+        return 1.0
+
+    direct = f"{currency}_{base}"
+    if direct in rates:
+        return rates[direct]["rate"]
+
+    reverse = f"{base}_{currency}"
+    if reverse in rates:
+        return 1.0 / rates[reverse]["rate"]
+
+    # через USD как промежуточную валюту
+    to_usd = f"{currency}_USD"
+    base_usd = f"{base}_USD"
+    if to_usd in rates and base_usd in rates:
+        return rates[to_usd]["rate"] / rates[base_usd]["rate"]
+
+    raise ValueError(f"Курс для {currency}→{base} недоступен")
