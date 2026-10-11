@@ -179,6 +179,20 @@ def _handle_sell(args: dict) -> None:
     print(f"Оценочная выручка: {result['revenue']:,.2f} USD")
 
 
+def _handle_get_rate(args: dict) -> None:
+    """Команда get-rate --from <str> --to <str>."""
+    if "from" not in args:
+        raise ValueError("Не указан обязательный аргумент '--from'")
+    if "to" not in args:
+        raise ValueError("Не указан обязательный аргумент '--to'")
+
+    result = usecases.get_rate(args["from"], args["to"])
+
+    print(f"Курс {result['pair']}: {result['rate']:,.6f}")
+    print(f"Обновлено: {result['updated_at']}")
+    print(f"Источник: {result['source']}")
+
+
 # Таблица команд: имя -> обработчик
 COMMANDS = {
     "register": _handle_register,
@@ -187,4 +201,5 @@ COMMANDS = {
     "show-portfolio": _handle_show_portfolio,
     "buy": _handle_buy,
     "sell": _handle_sell,
+    "get-rate": _handle_get_rate,
 }

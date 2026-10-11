@@ -346,6 +346,58 @@ def sell(currency: str, amount) -> dict:
     }
 
 
+# --- Команда get-rate ---
+
+
+def get_rate(from_currency: str, to_currency: str) -> dict:
+    """Возвращает курс обмена из валюты в валюту.
+
+    Логика:
+      1. Если пара есть в кеше и он свежий — берём из кеша.
+      2. Иначе обновляем кеш (заглушка «парсера») и берём оттуда.
+
+    Args:
+        from_currency: исходная валюта.
+        to_currency: целевая валюта.
+
+    Returns:
+        Словарь с парой, значением, временем обновления и источником.
+    """
+    _require_login()
+
+    source = utils.validate_currency_code(from_currency)
+    target = utils.validate_currency_code(to_currency)
+
+    rates = utils.load_rates()
+    last_refresh = rates.get("last_refresh")
+
+    if not last_refresh or not utils.is_fresh(last_refresh):
+        rates = utils.refresh_rates()
+
+    key = f"{source}_{target}"
+
+    if key in rates:
+        entry = rates[key]
+        return {
+            "pair": key,
+            "rate": entry["rate"],
+            "updated_at": entry["updated_at"],
+            "source": rates.get("source", "неизвестно"),
+        }
+
+    try:
+        rate = _rate_to_base(source, target, rates)
+    except ValueError as error:
+        raise ValueError(f"Не удалось получить курс '{source}→{target}'") from error
+
+    return {
+        "pair": key,
+        "rate": rate,
+        "updated_at": last_refresh or utils.now_iso(),
+        "source": rates.get("source", "неизвестно"),
+    }
+
+
 def _save_portfolio(portfolio: Portfolio, portfolios: list) -> None:
     """Записывает изменённый портфель обратно в portfolios.json."""
     for index, record in enumerate(portfolios):
