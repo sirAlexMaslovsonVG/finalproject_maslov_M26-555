@@ -234,7 +234,6 @@ uv run python -m valutatrade_hub.parser_service.scheduler --interval 600
 ## Разработка
 
 ```bash
-uv run pytest              # тесты
 uv run ruff check .        # стиль (если настроен ruff)
 ```
 
