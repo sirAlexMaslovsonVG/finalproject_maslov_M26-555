@@ -11,6 +11,7 @@ from valutatrade_hub.core.exceptions import (
     InsufficientFundsError,
 )
 from valutatrade_hub.core.models import Portfolio, User, Wallet
+from valutatrade_hub.infra.settings import get_settings
 
 # --- Текущая сессия (в памяти процесса) ---
 _current_user: User | None = None
@@ -73,7 +74,7 @@ def _ensure_starting_usd(record: dict) -> dict:
     """Гарантирует наличие USD-кошелька в записи портфеля.
 
     Нужно для совместимости с портфелями, созданными до введения
-    стартового баланса (ТЗ 3.5: безопасные операции чтение→модификация→запись).
+    стартового баланса
 
     Args:
         record: запись портфеля из portfolios.json.
@@ -85,7 +86,7 @@ def _ensure_starting_usd(record: dict) -> dict:
     if "USD" not in wallets:
         wallets["USD"] = {
             "currency_code": "USD",
-            "balance": utils.STARTING_USD_BALANCE,
+            "balance": get_settings().get("starting_usd_balance", 10_000.0),
         }
     return record
 
@@ -198,7 +199,9 @@ def register(
     utils.save_users(users)
 
     balance = (
-        utils.STARTING_USD_BALANCE if starting_balance is None else starting_balance
+        get_settings().get("starting_usd_balance", 10_000.0)
+        if starting_balance is None
+        else starting_balance
     )
     portfolios = utils.load_portfolios()
     portfolios.append(

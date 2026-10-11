@@ -1,21 +1,9 @@
 """Вспомогательные функции ValutaTrade Hub."""
 
-import json
-import os
 from datetime import datetime, timedelta
 
-# --- Константы конфигурации (до раздела 3.3 будут жить здесь) ---
-
-DATA_DIR = "data"
-USERS_FILE = os.path.join(DATA_DIR, "users.json")
-PORTFOLIOS_FILE = os.path.join(DATA_DIR, "portfolios.json")
-RATES_FILE = os.path.join(DATA_DIR, "rates.json")
-
-RATES_TTL_SECONDS = 300  # 5 минут, как в ТЗ (раздел 2.2)
-
-# Стартовый баланс USD при регистрации (виртуальный стартовый капитал).
-# Нужен, чтобы логика ТЗ «покупка списывается с USD-кошелька» работала.
-STARTING_USD_BALANCE = 10_000.0
+from valutatrade_hub.infra.database import get_database
+from valutatrade_hub.infra.settings import get_settings
 
 # Заглушка курсов до подключения Parser Service (раздел 5 ТЗ).
 STUB_RATES = {
@@ -26,63 +14,37 @@ STUB_RATES = {
 }
 STUB_RATES_SOURCE = "StubRates (ParserService заглушка)"
 
-# --- Работа с путями и JSON ---
-
-
-def _ensure_data_dir() -> None:
-    """Создаёт каталог data/, если его нет."""
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-
-def _load_json(path: str, default):
-    """Загружает JSON из файла или возвращает значение по умолчанию."""
-    _ensure_data_dir()
-    if not os.path.exists(path):
-        return default
-    try:
-        with open(path, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except (json.JSONDecodeError, OSError):
-        return default
-
-
-def _save_json(path: str, data) -> None:
-    """Атомарно сохраняет данные в JSON-файл (tmp → rename)."""
-    _ensure_data_dir()
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, path)
+# --- Работа с путями и JSON (через DatabaseManager) ---
 
 
 def load_users() -> list:
     """Загружает список пользователей из users.json."""
-    return _load_json(USERS_FILE, [])
+    return get_database().load_users()
 
 
 def save_users(users: list) -> None:
     """Сохраняет список пользователей в users.json."""
-    _save_json(USERS_FILE, users)
+    get_database().save_users(users)
 
 
 def load_portfolios() -> list:
     """Загружает список портфелей из portfolios.json."""
-    return _load_json(PORTFOLIOS_FILE, [])
+    return get_database().load_portfolios()
 
 
 def save_portfolios(portfolios: list) -> None:
     """Сохраняет список портфелей в portfolios.json."""
-    _save_json(PORTFOLIOS_FILE, portfolios)
+    get_database().save_portfolios(portfolios)
 
 
 def load_rates() -> dict:
     """Загружает кеш курсов из rates.json."""
-    return _load_json(RATES_FILE, {})
+    return get_database().load_rates()
 
 
 def save_rates(rates: dict) -> None:
     """Сохраняет кеш курсов в rates.json."""
-    _save_json(RATES_FILE, rates)
+    get_database().save_rates(rates)
 
 
 # --- Время ---
@@ -93,18 +55,20 @@ def now_iso() -> str:
     return datetime.now().replace(microsecond=0).isoformat()
 
 
-def is_fresh(updated_at: str, ttl_seconds: int = RATES_TTL_SECONDS) -> bool:
+def is_fresh(updated_at: str, ttl_seconds: int | None = None) -> bool:
     """Проверяет, моложе ли метка времени указанного TTL.
 
     Args:
         updated_at: метка времени в формате ISO.
-        ttl_seconds: время жизни в секундах.
+        ttl_seconds: время жизни в секундах; если None — берётся из настроек.
 
     Returns:
         True, если метка свежая; иначе False.
     """
     if not updated_at:
         return False
+    if ttl_seconds is None:
+        ttl_seconds = get_settings().get("rates_ttl_seconds", 300)
     try:
         moment = datetime.fromisoformat(updated_at)
     except ValueError:
@@ -164,17 +128,7 @@ def validate_amount(amount) -> float:
 
 
 def validate_currency_code(code: str) -> str:
-    """Проверяет, что код валюты — непустая строка; приводит к верхнему регистру.
-
-    Args:
-        code: код валюты.
-
-    Returns:
-        Код в верхнем регистре.
-
-    Raises:
-        ValueError: если код не строка или пустой.
-    """
+    """Проверяет, что код валюты — непустая строка; приводит к верхнему регистру."""
     if not isinstance(code, str) or not code.strip():
         raise ValueError("Код валюты не может быть пустым")
     return code.strip().upper()
@@ -187,15 +141,7 @@ def format_amount(amount: float, currency_code: str) -> str:
     """Форматирует сумму по правилам ТЗ.
 
     Фиатные валюты — 2 знака после запятой, криптовалюты — 4.
-
-    Args:
-        amount: значение для вывода.
-        currency_code: код валюты.
-
-    Returns:
-        Строка с числом, отформатированным для UI.
     """
-    # локальный импорт во избежание циклической зависимости utils ↔ currencies
     from valutatrade_hub.core.currencies import is_fiat
 
     digits = 2 if is_fiat(currency_code) else 4
