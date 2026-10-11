@@ -19,6 +19,8 @@ HELP_TEXT = """Доступные команды:
   buy --currency <str> --amount <float>
   sell --currency <str> --amount <float>
   get-rate --from <str> --to <str>
+  show-rates
+  update-rates
   help
   exit
 """
@@ -184,6 +186,37 @@ def _handle_get_rate(args: dict) -> None:
         )
 
 
+def _handle_update_rates(args: dict) -> None:
+    """Команда update-rates — принудительное обновление курсов через Parser Service."""
+    from valutatrade_hub.parser_service.config import ParserConfig
+    from valutatrade_hub.parser_service.updater import RatesUpdater
+
+    result = RatesUpdater(ParserConfig()).run_update()
+    print(f"Обновлено пар: {result['updated']}")
+    for source, count in result["sources"].items():
+        print(f"- {source}: {count} пар")
+    for source, error in result["errors"].items():
+        print(f"- {source}: ошибка — {error}")
+
+
+def _handle_show_rates(args: dict) -> None:
+    """Команда show-rates — вывод последних сохранённых курсов."""
+    result = usecases.show_rates()
+    pairs = result["pairs"]
+    if not pairs:
+        print("Курсы отсутствуют. Выполните: update-rates")
+        return
+
+    print("Последние сохранённые курсы:")
+    for pair, entry in sorted(pairs.items()):
+        rate = _format_rate(entry["rate"])
+        updated = str(entry.get("updated_at", "")).replace("T", " ")
+        source = entry.get("source", "неизвестно")
+        print(f"- {pair}: {rate} (обновлено: {updated}, источник: {source})")
+    if result["last_refresh"]:
+        print(f"Последнее обновление: {str(result['last_refresh']).replace('T', ' ')}")
+
+
 COMMANDS = {
     "register": _handle_register,
     "login": _handle_login,
@@ -192,6 +225,8 @@ COMMANDS = {
     "buy": _handle_buy,
     "sell": _handle_sell,
     "get-rate": _handle_get_rate,
+    "show-rates": _handle_show_rates,
+    "update-rates": _handle_update_rates,
 }
 
 

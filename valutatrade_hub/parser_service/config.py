@@ -28,7 +28,12 @@ class ParserConfig:
         RATES_FILE_PATH: путь к кешу Core Service.
         HISTORY_FILE_PATH: путь к истории Parser Service.
         REQUEST_TIMEOUT: таймаут HTTP-запроса в секундах.
+        SCHEDULER_INTERVAL: интервал фонового обновления в секундах.
     """
+
+    REQUEST_TIMEOUT: int = 10
+
+    SCHEDULER_INTERVAL: int = 300
 
     EXCHANGERATE_API_KEY: Optional[str] = field(
         default_factory=lambda: os.getenv("EXCHANGERATE_API_KEY")

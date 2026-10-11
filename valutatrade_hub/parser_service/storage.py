@@ -114,15 +114,15 @@ def append_history(history_path: str, rates: dict, source: str) -> int:
     return added
 
 
-def save_rates(rates_path: str, rates: dict, source: str) -> None:
+def save_rates(rates_path: str, rates: dict, sources: dict) -> None:
     """Сохраняет срез курсов в rates.json (в формате 'pairs').
 
     Обновляет пару только если новый updated_at свежее текущего.
 
     Args:
         rates_path: путь к кешу Core Service.
-        rates: словарь {'BTC_USD': 82970.0, ...}.
-        source: имя источника (или список через запятую).
+        rates: словарь {'BTC_USD': 83117.0, ...}.
+        sources: словарь {'BTC_USD': 'CoinGecko', ...} — источник каждой пары.
     """
     cache = _read_json(rates_path, {})
     pairs = cache.get("pairs", {})
@@ -135,7 +135,7 @@ def save_rates(rates_path: str, rates: dict, source: str) -> None:
         pairs[pair] = {
             "rate": float(rate),
             "updated_at": timestamp,
-            "source": source,
+            "source": sources.get(pair, "unknown"),
         }
 
     payload = {

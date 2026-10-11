@@ -437,6 +437,9 @@ def sell(currency: str, amount) -> dict:
 # --- Команда get-rate ---
 
 
+# --- Команда get-rate ---
+
+
 @log_action(action="GET_RATE", verbose=False)
 def get_rate(from_currency: str, to_currency: str) -> dict:
     """Возвращает курс обмена из валюты в валюту.
@@ -451,31 +454,54 @@ def get_rate(from_currency: str, to_currency: str) -> dict:
     source = _validate_known_currency(from_currency)
     target = _validate_known_currency(to_currency)
 
-    rates = utils.load_rates()
-    last_refresh = rates.get("last_refresh")
-
-    if not last_refresh or not utils.is_fresh(last_refresh):
-        try:
-            rates = utils.refresh_rates()
-        except OSError as error:
-            raise ApiRequestError(str(error)) from error
+    pairs = utils.refresh_rates()  # сразу пары, TTL проверяется внутри
+    cache = utils.load_rates()
+    source_name = (
+        cache.get("source", "Parser Service")
+        if isinstance(cache, dict)
+        else "Parser Service"
+    )
+    last_refresh = cache.get("last_refresh") if isinstance(cache, dict) else None
 
     key = f"{source}_{target}"
-    if key in rates:
-        entry = rates[key]
+    if key in pairs:
+        entry = pairs[key]
         return {
             "from": source,
             "to": target,
             "rate": entry["rate"],
             "updated_at": entry["updated_at"],
-            "source": rates.get("source", "неизвестно"),
+            "source": entry.get("source", source_name),
         }
 
-    rate = _rate_to_base(source, target, rates)
+    rate = _rate_to_base(source, target, pairs)
     return {
         "from": source,
         "to": target,
         "rate": rate,
         "updated_at": last_refresh or utils.now_iso(),
-        "source": rates.get("source", "неизвестно"),
+        "source": source_name,
+    }
+
+
+# --- Команды show-rates / update-rates (раздел 4.6 ТЗ) ---
+
+
+def show_rates() -> dict:
+    """Возвращает последние сохранённые курсы и метаданные кеша.
+
+    Returns:
+        Словарь {'pairs': {...}, 'last_refresh': str|None}.
+
+    Raises:
+        ApiRequestError: если кеш пуст и обновить не удалось.
+    """
+    cache = utils.load_rates()
+    if not isinstance(cache, dict) or not cache.get("pairs"):
+        # кеша нет — пробуем обновить
+        utils.refresh_rates()
+        cache = utils.load_rates()
+    return {
+        "pairs": (cache or {}).get("pairs", {}),
+        "last_refresh": (cache or {}).get("last_refresh"),
     }

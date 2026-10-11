@@ -3,6 +3,12 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+ .venv
+ dist/
+ __pycache__/
+ *.egg-info
+ 
+
 # C extensions
 *.so
 
@@ -218,3 +224,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ─── ValutaTrade Hub ───────────────────────────
+data/*.json
+!data/.gitkeep
+logs/

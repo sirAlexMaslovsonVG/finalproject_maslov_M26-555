@@ -1,18 +1,9 @@
 """Вспомогательные функции ValutaTrade Hub."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from valutatrade_hub.infra.database import get_database
 from valutatrade_hub.infra.settings import get_settings
-
-# Заглушка курсов до подключения Parser Service (раздел 5 ТЗ).
-STUB_RATES = {
-    "EUR_USD": 1.0786,
-    "BTC_USD": 59337.21,
-    "RUB_USD": 0.01016,
-    "ETH_USD": 3720.00,
-}
-STUB_RATES_SOURCE = "StubRates (ParserService заглушка)"
 
 # --- Работа с путями и JSON (через DatabaseManager) ---
 
@@ -38,7 +29,7 @@ def save_portfolios(portfolios: list) -> None:
 
 
 def load_rates() -> dict:
-    """Загружает кеш курсов из rates.json."""
+    """Загружает кеш курсов из rates.json (весь файл: pairs + last_refresh)."""
     return get_database().load_rates()
 
 
@@ -51,12 +42,20 @@ def save_rates(rates: dict) -> None:
 
 
 def now_iso() -> str:
-    """Возвращает текущее время в формате ISO без микросекунд."""
-    return datetime.now().replace(microsecond=0).isoformat()
+    """Возвращает текущее время в ISO-8601 UTC с суффиксом 'Z'."""
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def is_fresh(updated_at: str, ttl_seconds: int | None = None) -> bool:
     """Проверяет, моложе ли метка времени указанного TTL.
+
+    Корректно работает и с naive-метками (без таймзоны),
+    и с aware-метками UTC (с суффиксом 'Z' или '+00:00').
 
     Args:
         updated_at: метка времени в формате ISO.
@@ -70,37 +69,49 @@ def is_fresh(updated_at: str, ttl_seconds: int | None = None) -> bool:
     if ttl_seconds is None:
         ttl_seconds = get_settings().get("rates_ttl_seconds", 300)
     try:
-        moment = datetime.fromisoformat(updated_at)
-    except ValueError:
+        moment = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
         return False
-    return datetime.now() - moment < timedelta(seconds=ttl_seconds)
+
+    # Сравниваем в одном "сознании": aware-метку — с UTC-now,
+    # naive-метку — с локальным now.
+    now = datetime.now(moment.tzinfo) if moment.tzinfo else datetime.now()
+    return now - moment < timedelta(seconds=ttl_seconds)
 
 
-# --- Курсы (заглушка Parser Service) ---
+# --- Курсы (интеграция с Parser Service, разделы 4–5 ТЗ) ---
 
 
 def refresh_rates() -> dict:
-    """Возвращает актуальные курсы: из кеша, если свежий, иначе обновляет.
-
-    Пока Parser Service не подключён, источник — заглушка STUB_RATES.
+    """Возвращает актуальные курсы: из кеша, если свежий, иначе через Parser Service.
 
     Returns:
-        Словарь курсов в формате rates.json.
-    """
-    rates = load_rates()
-    last_refresh = rates.get("last_refresh")
-    if last_refresh and is_fresh(last_refresh):
-        return rates
+        Словарь пар вида {'BTC_USD': {'rate': ..., 'updated_at': ...}}.
 
-    updated_at = now_iso()
-    refreshed = {
-        pair: {"rate": rate, "updated_at": updated_at}
-        for pair, rate in STUB_RATES.items()
-    }
-    refreshed["source"] = STUB_RATES_SOURCE
-    refreshed["last_refresh"] = updated_at
-    save_rates(refreshed)
-    return refreshed
+    Raises:
+        ApiRequestError: если обновление не удалось и кеш отсутствует/устарел.
+    """
+    from valutatrade_hub.core.exceptions import ApiRequestError
+
+    cache = load_rates()
+    if not isinstance(cache, dict):
+        cache = {}
+
+    last_refresh = cache.get("last_refresh")
+    if last_refresh and is_fresh(last_refresh) and cache.get("pairs"):
+        return cache["pairs"]
+
+    # Ленивый импорт: разрываем цикл utils -> updater -> storage -> utils.
+    from valutatrade_hub.parser_service.config import ParserConfig
+    from valutatrade_hub.parser_service.updater import RatesUpdater
+
+    updater = RatesUpdater(ParserConfig())
+    updater.run_update()  # бросит ApiRequestError при полном сбое
+
+    refreshed = load_rates()
+    if not isinstance(refreshed, dict):
+        raise ApiRequestError("кеш курсов повреждён после обновления")
+    return refreshed.get("pairs", {})
 
 
 # --- Валидаторы (раздел 2.2 ТЗ) ---
