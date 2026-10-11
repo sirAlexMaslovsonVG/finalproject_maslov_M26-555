@@ -1,11 +1,13 @@
-"""Точка запуска приложения ValutaTrade Hub."""
+"""Точка входа ValutaTrade Hub."""
 
-from valutatrade_hub.cli import interface
+from valutatrade_hub.cli.interface import run_repl
+from valutatrade_hub.infra.logging_config import setup_logging
 
 
 def main() -> None:
-    """Запускает консольный интерфейс."""
-    interface.run_repl()
+    """Настраивает логирование и запускает REPL."""
+    setup_logging()
+    run_repl()
 
 
 if __name__ == "__main__":

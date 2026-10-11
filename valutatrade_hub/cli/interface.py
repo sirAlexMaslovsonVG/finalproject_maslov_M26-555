@@ -53,7 +53,8 @@ def _require_arg(args: dict, name: str) -> str:
 def _handle_register(args: dict) -> None:
     """Команда register --username <str> --password <str>."""
     message = usecases.register(
-        _require_arg(args, "username"), _require_arg(args, "password")
+        username=_require_arg(args, "username"),
+        password=_require_arg(args, "password"),
     )
     print(message)
 
@@ -61,7 +62,8 @@ def _handle_register(args: dict) -> None:
 def _handle_login(args: dict) -> None:
     """Команда login --username <str> --password <str>."""
     message = usecases.login(
-        _require_arg(args, "username"), _require_arg(args, "password")
+        username=_require_arg(args, "username"),
+        password=_require_arg(args, "password"),
     )
     print(message)
 
@@ -96,7 +98,10 @@ def _handle_show_portfolio(args: dict) -> None:
 
 def _handle_buy(args: dict) -> None:
     """Команда buy --currency <str> --amount <float>."""
-    result = usecases.buy(_require_arg(args, "currency"), _require_arg(args, "amount"))
+    result = usecases.buy(
+        currency=_require_arg(args, "currency"),
+        amount=_require_arg(args, "amount"),
+    )
     code = result["currency"]
 
     rate = format_amount(result["rate"], "USD") if False else f"{result['rate']:,.2f}"
@@ -110,7 +115,10 @@ def _handle_buy(args: dict) -> None:
 
 def _handle_sell(args: dict) -> None:
     """Команда sell --currency <str> --amount <float>."""
-    result = usecases.sell(_require_arg(args, "currency"), _require_arg(args, "amount"))
+    result = usecases.sell(
+        currency=_require_arg(args, "currency"),
+        amount=_require_arg(args, "amount"),
+    )
     code = result["currency"]
 
     rate = f"{result['rate']:,.2f}"
@@ -141,7 +149,10 @@ def _format_rate(value: float) -> str:
 
 def _handle_get_rate(args: dict) -> None:
     """Команда get-rate --from <str> --to <str>."""
-    result = usecases.get_rate(_require_arg(args, "from"), _require_arg(args, "to"))
+    result = usecases.get_rate(
+        from_currency=_require_arg(args, "from"),
+        to_currency=_require_arg(args, "to"),
+    )
 
     updated = result["updated_at"].replace("T", " ")
     print(

@@ -11,6 +11,7 @@ from valutatrade_hub.core.exceptions import (
     InsufficientFundsError,
 )
 from valutatrade_hub.core.models import Portfolio, User, Wallet
+from valutatrade_hub.infra.logging_decorator import log_action
 from valutatrade_hub.infra.settings import get_settings
 
 # --- Текущая сессия (в памяти процесса) ---
@@ -156,6 +157,7 @@ def _validate_known_currency(currency: str) -> str:
 # --- Команда register ---
 
 
+@log_action(action="REGISTER", verbose=False)
 def register(
     username: str, password: str, starting_balance: float | None = None
 ) -> str:
@@ -223,6 +225,7 @@ def register(
 # --- Команда login ---
 
 
+@log_action(action="LOGIN", verbose=False)
 def login(username: str, password: str) -> str:
     """Входит в систему и фиксирует текущую сессию."""
     global _current_user
@@ -345,6 +348,7 @@ def _credit_usd(portfolio: Portfolio, revenue: float) -> None:
     portfolio.get_wallet("USD").deposit(revenue)
 
 
+@log_action(action="BUY", verbose=True)
 def buy(currency: str, amount) -> dict:
     """Покупает валюту: списывает USD и пополняет кошелёк валюты.
 
@@ -385,6 +389,7 @@ def buy(currency: str, amount) -> dict:
     }
 
 
+@log_action(action="SELL", verbose=True)
 def sell(currency: str, amount) -> dict:
     """Продаёт валюту: уменьшает кошелёк валюты и начисляет USD.
 
@@ -432,6 +437,7 @@ def sell(currency: str, amount) -> dict:
 # --- Команда get-rate ---
 
 
+@log_action(action="GET_RATE", verbose=False)
 def get_rate(from_currency: str, to_currency: str) -> dict:
     """Возвращает курс обмена из валюты в валюту.
 
