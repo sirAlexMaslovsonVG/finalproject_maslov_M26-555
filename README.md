@@ -72,7 +72,7 @@ finalproject_maslov_M26-555/
 Проект использует [uv](https://docs.astral.sh/uv/).
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/sirAlexMaslovsonVG/finalproject_maslov_M26-555
 cd finalproject_maslov_M26-555
 uv sync
 ```
