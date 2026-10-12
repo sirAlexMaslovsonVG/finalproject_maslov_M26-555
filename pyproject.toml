@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-valutatrade-hub = "valutatrade_hub.__main__:main"
+valutatrade-hub = "valutatrade_hub.__init__:main"
 
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14.0"]

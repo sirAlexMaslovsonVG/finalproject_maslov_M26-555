@@ -106,6 +106,12 @@ ExchangeRate-API отмечается как недоступный в отве�
 ## Быстрый старт
 
 ```bash
+uv run valutatrade-hub
+```
+
+ИЛИ
+
+```bash
 uv run python main.py
 ```
 
